@@ -232,7 +232,8 @@ For each `.svelte` file:
    - `string` / `number` / `boolean` → matching `PropKind`.
    - Union of string or number literals → `{ kind: "enum", values }`.
    - Optional (`?`) or has a default in the destructure → `required: false`.
-   - Anything else (object, function, `Snippet`, generic, imported type) → `{ kind: "unsupported", reason }`.
+   - Imported types are followed by the TS checker and classified by their resolved shape (e.g. an imported `type Variant = 'a' | 'b'` resolves to an enum and is supported).
+   - Anything else (object, function, `Snippet`, generic, types that cannot be resolved to a supported primitive or literal union) → `{ kind: "unsupported", reason }`.
 6. Capture JSDoc on each prop via `symbol.getDocumentationComment(checker)` → `docComment`.
 7. Capture default value by parsing destructure RHS when it is a literal; omit otherwise.
 
@@ -337,14 +338,14 @@ Replaces the preview. Lists `blockers[]`, shows component path, and a copy-paste
 
 ### URL state
 
-`#/path/to/Component?prop1=foo&prop2=true` — shareable within a team even without a formal export feature.
+`#/path/to/Component?prop1=foo&prop2=true` — shareable within a team even without a formal export feature. Encoding rules: strings URL-encoded as-is; numbers stringified; booleans `true`/`false`; enums use the literal value's string form. Unsupported props omitted from the hash.
 
 ## 11. Error Handling
 
 | Failure                              | Behavior                                                                                  |
 |--------------------------------------|-------------------------------------------------------------------------------------------|
 | User vite config load fails          | CLI prints error + path, exits 1 before server start                                      |
-| Port taken                           | Auto-pick next free port, log new port                                                    |
+| Port taken                           | Scan upward from requested port for up to 20 ports, bind first free one, log it. If none free in range, exit 1 with message. |
 | Single `.svelte` parse fails         | Log warn, mark file `needs-setup` with blocker, continue                                  |
 | `svelte2tsx` throws on file          | Same — mark needs-setup, continue                                                         |
 | Component throws on mount            | `<svelte:boundary>` in `Preview.svelte` shows red card with stack; gallery stays alive    |
