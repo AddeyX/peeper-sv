@@ -4,7 +4,7 @@
   "description": "Zero-config Svelte 5 component gallery. Run npx peeper-sv inside any SvelteKit project to browse every component with auto-generated prop controls.",
   "type": "module",
   "bin": {
-    "peeper-sv": "./dist/cli.js"
+    "peeper-sv": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
