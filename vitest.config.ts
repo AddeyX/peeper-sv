@@ -6,5 +6,10 @@ export default defineConfig({
     include: ["tests/unit/**/*.test.ts", "tests/integration/**/*.test.ts"],
     environment: "node",
     pool: "threads",
+    server: {
+      deps: {
+        external: [/\/tests\/fixtures\//],
+      },
+    },
   },
 });
