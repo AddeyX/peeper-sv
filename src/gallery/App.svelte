@@ -7,37 +7,44 @@
   import { defaultPropValues, type PropValue } from "./lib/props-state.js";
   import { parseHash, encodeHash } from "./lib/hash-router.js";
 
-  let selectedId = $state<string | null>(manifest.components[0]?.id ?? null);
+  // Resolve initial selection from URL hash before mount so first render is stable.
+  const initialHash =
+    typeof window !== "undefined" ? parseHash(window.location.hash) : { relPath: null, props: {} };
+  const initialFromHash = initialHash.relPath
+    ? manifest.components.find((c: ComponentEntry) => c.relPath === initialHash.relPath)
+    : undefined;
+  const initialEntry = initialFromHash ?? manifest.components[0];
+
+  let selectedId = $state<string | null>(initialEntry?.id ?? null);
   const selected = $derived(
     manifest.components.find((c: ComponentEntry) => c.id === selectedId) ?? null,
   );
 
-  let values = $state<Record<string, PropValue>>({});
+  let values = $state<Record<string, PropValue>>(
+    initialEntry
+      ? { ...defaultPropValues(initialEntry.props), ...initialHash.props }
+      : {},
+  );
 
+  function selectById(id: string | null): void {
+    selectedId = id;
+    const entry = id
+      ? manifest.components.find((c: ComponentEntry) => c.id === id)
+      : null;
+    values = entry ? defaultPropValues(entry.props) : {};
+  }
+
+  // Listen for hashchange (e.g. browser back/forward).
   $effect(() => {
-    if (selected) values = defaultPropValues(selected.props);
-    else values = {};
-  });
-
-  // Initial sync from URL + listen for hashchange
-  $effect(() => {
-    const init = parseHash(window.location.hash);
-    if (init.relPath) {
-      const match = manifest.components.find((c: ComponentEntry) => c.relPath === init.relPath);
-      if (match) {
-        selectedId = match.id;
-        queueMicrotask(() => {
-          values = { ...values, ...init.props };
-        });
-      }
-    }
-
     const onHash = (): void => {
       const next = parseHash(window.location.hash);
       const match = next.relPath
         ? manifest.components.find((c: ComponentEntry) => c.relPath === next.relPath)
         : null;
-      if (match) selectedId = match.id;
+      if (match && match.id !== selectedId) {
+        selectedId = match.id;
+        values = { ...defaultPropValues(match.props), ...next.props };
+      }
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -53,7 +60,7 @@
   });
 
   function onSelect(id: string): void {
-    selectedId = id;
+    selectById(id);
   }
 </script>
 

@@ -1,0 +1,2 @@
+:root { --kit-accent: rebeccapurple; }
+.kit-marker { color: var(--kit-accent); }
