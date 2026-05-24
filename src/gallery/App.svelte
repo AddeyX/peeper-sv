@@ -5,6 +5,7 @@
   import Preview from "./lib/Preview.svelte";
   import ControlPanel from "./lib/ControlPanel.svelte";
   import { defaultPropValues, type PropValue } from "./lib/props-state.js";
+  import { parseHash, encodeHash } from "./lib/hash-router.js";
 
   let selectedId = $state<string | null>(manifest.components[0]?.id ?? null);
   const selected = $derived(
@@ -16,6 +17,39 @@
   $effect(() => {
     if (selected) values = defaultPropValues(selected.props);
     else values = {};
+  });
+
+  // Initial sync from URL + listen for hashchange
+  $effect(() => {
+    const init = parseHash(window.location.hash);
+    if (init.relPath) {
+      const match = manifest.components.find((c: ComponentEntry) => c.relPath === init.relPath);
+      if (match) {
+        selectedId = match.id;
+        queueMicrotask(() => {
+          values = { ...values, ...init.props };
+        });
+      }
+    }
+
+    const onHash = (): void => {
+      const next = parseHash(window.location.hash);
+      const match = next.relPath
+        ? manifest.components.find((c: ComponentEntry) => c.relPath === next.relPath)
+        : null;
+      if (match) selectedId = match.id;
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  });
+
+  // Push state up to URL when selection or values change
+  $effect(() => {
+    if (!selected) return;
+    const next = encodeHash(selected.relPath, values);
+    if (next !== window.location.hash) {
+      history.replaceState(null, "", next);
+    }
   });
 
   function onSelect(id: string): void {
