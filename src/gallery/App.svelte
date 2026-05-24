@@ -1,5 +1,16 @@
 <script lang="ts">
   import manifest from "virtual:peeper-manifest";
+  import type { ComponentEntry } from "../shared/types.js";
+  import Sidebar from "./lib/Sidebar.svelte";
+
+  let selectedId = $state<string | null>(manifest.components[0]?.id ?? null);
+  const selected = $derived(
+    manifest.components.find((c: ComponentEntry) => c.id === selectedId) ?? null,
+  );
+
+  function onSelect(id: string): void {
+    selectedId = id;
+  }
 </script>
 
 <div class="shell">
@@ -7,9 +18,18 @@
     <strong>peeper-sv</strong>
     <span class="muted">{manifest.components.length} components</span>
   </header>
-  <main class="content">
-    <p>Gallery scaffolded. Sidebar + preview wired in next tasks.</p>
-  </main>
+  <div class="body">
+    <Sidebar entries={manifest.components} {selectedId} {onSelect} />
+    <main class="main">
+      {#if selected}
+        <h2>{selected.name}</h2>
+        <p class="muted">{selected.relPath}</p>
+        <pre>{JSON.stringify(selected.props, null, 2)}</pre>
+      {:else}
+        <p>No components found.</p>
+      {/if}
+    </main>
+  </div>
 </div>
 
 <style>
@@ -20,5 +40,7 @@
     background: var(--panel);
   }
   .muted { color: var(--muted); font-size: 0.875rem; }
-  .content { padding: 1rem; }
+  .body { display: flex; flex: 1; overflow: hidden; }
+  .main { flex: 1; padding: 1rem; overflow: auto; }
+  pre { background: var(--panel); padding: 0.75rem; border-radius: 6px; overflow: auto; }
 </style>
