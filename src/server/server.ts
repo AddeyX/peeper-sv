@@ -91,7 +91,13 @@ export async function startServer(input: StartServerInput): Promise<void> {
     },
     plugins: [
       ...userPlugins,
-      svelte(),
+      // Only add our own svelte() if user's plugin chain doesn't already
+      // include one. User's version (from their SvelteKit setup) is
+      // matched to their svelte/bits-ui/etc. and handles compiled
+      // .svelte files in node_modules correctly.
+      ...(userPlugins.some((p) => p.name === "vite-plugin-svelte")
+        ? []
+        : [svelte()]),
       peeperPlugin({
         root: input.root,
         scan: mergedScan,
@@ -137,22 +143,28 @@ function rangeOf(start: number, count: number): number[] {
  */
 function filterUserPlugins(plugins: readonly PluginOption[]): Plugin[] {
   const out: Plugin[] = [];
-  const SKIP_PREFIXES = [
-    "vite-plugin-svelte",         // @sveltejs/vite-plugin-svelte
-    "vite-plugin-sveltekit",      // SvelteKit core plugins
-    "sveltekit",                  // sveltekit() top-level marker
-  ];
+  // Drop SvelteKit-specific plugins (they expect a full SvelteKit app
+  // runtime that the gallery doesn't provide). KEEP `vite-plugin-svelte`
+  // itself — user's version is paired with their bits-ui / convex-svelte
+  // / etc. and handles compiled .svelte deps correctly.
+  const isSvelteKitPlugin = (name: string): boolean => {
+    return (
+      name.startsWith("vite-plugin-sveltekit") ||
+      name.startsWith("vite-plugin-svelte-kit") ||
+      name === "sveltekit" ||
+      name.startsWith("sveltekit:")
+    );
+  };
   const walk = (p: PluginOption): void => {
     if (!p || typeof p === "boolean") return;
     if (Array.isArray(p)) {
       for (const child of p) walk(child);
       return;
     }
-    // Promises / async plugin options — we synchronously read, so skip.
     if (typeof (p as { then?: unknown }).then === "function") return;
     const plugin = p as Plugin;
     const name = plugin.name ?? "";
-    if (SKIP_PREFIXES.some((prefix) => name.startsWith(prefix))) return;
+    if (isSvelteKitPlugin(name)) return;
     out.push(plugin);
   };
   for (const p of plugins) walk(p);
