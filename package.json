@@ -1,6 +1,6 @@
 {
   "name": "peeper-sv",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Zero-config Svelte 5 component gallery. Run npx peeper-sv inside any SvelteKit project to browse every component with auto-generated prop controls.",
   "type": "module",
   "bin": {
@@ -43,7 +43,7 @@
   },
   "peerDependencies": {
     "svelte": "^5.0.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0"
   },
   "dependencies": {
     "commander": "12.1.0",

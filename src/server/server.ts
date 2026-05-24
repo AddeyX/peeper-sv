@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 import {
   createServer,
   loadConfigFromFile,
-  mergeConfig,
   type InlineConfig,
 } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
@@ -44,22 +43,34 @@ export async function startServer(input: StartServerInput): Promise<void> {
     configured: peeperCfg.globalCss,
   });
 
-  const userViteResult = await loadConfigFromFile(
-    { command: "serve", mode: "development" },
-    undefined,
-    input.root,
-  ).catch((err: Error) => {
-    throw new Error(`Failed to load user Vite config: ${err.message}`);
-  });
+  // Best-effort: borrow user's vite aliases (e.g. $lib remap), nothing else.
+  // Merging the user's full config caused dep-optimization to scan their entire
+  // dependency graph and choke on pre-compiled Svelte packages (bits-ui,
+  // convex-svelte, etc.). The gallery only needs aliases for user-component
+  // imports to resolve correctly.
+  let userAliasObj: Record<string, string> | undefined;
+  try {
+    const userViteResult = await loadConfigFromFile(
+      { command: "serve", mode: "development" },
+      undefined,
+      input.root,
+    );
+    const userAliasRaw = userViteResult?.config.resolve?.alias;
+    userAliasObj = Array.isArray(userAliasRaw)
+      ? undefined
+      : (userAliasRaw as Record<string, string> | undefined);
+  } catch (err) {
+    // User vite config is broken or missing — fine, fall back to defaults.
+    console.warn(
+      pc.yellow(
+        `peeper-sv: could not load user vite config (${
+          err instanceof Error ? err.message : String(err)
+        }). Continuing with default aliases.`,
+      ),
+    );
+  }
 
   const port = await getPort({ port: rangeOf(input.port, 20) });
-
-  const userAliasRaw = userViteResult?.config.resolve?.alias;
-  const userAliasObj: Record<string, string> | undefined = Array.isArray(
-    userAliasRaw,
-  )
-    ? undefined
-    : (userAliasRaw as Record<string, string> | undefined);
 
   const galleryConfig: InlineConfig = {
     root: resolvedGalleryRoot,
@@ -87,21 +98,17 @@ export async function startServer(input: StartServerInput): Promise<void> {
         ...(userAliasObj ?? {}),
       },
     },
+    // Prevent Vite from auto-scanning the user's dependency graph for
+    // optimization. The gallery shell has only svelte runtime deps; user
+    // components load lazily via /@fs/... at runtime. Scanning user deps was
+    // causing crashes on pre-compiled Svelte packages.
+    optimizeDeps: {
+      noDiscovery: true,
+      include: [],
+    },
   };
 
-  const final = userViteResult
-    ? mergeConfig(
-        {
-          ...userViteResult.config,
-          root: galleryConfig.root,
-          configFile: false,
-          server: galleryConfig.server,
-        },
-        galleryConfig,
-      )
-    : galleryConfig;
-
-  const server = await createServer(final as InlineConfig);
+  const server = await createServer(galleryConfig);
   await server.listen();
   server.printUrls();
   console.log(pc.dim("\npeeper-sv ready — press Ctrl+C to stop\n"));
