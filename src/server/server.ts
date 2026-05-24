@@ -4,6 +4,8 @@ import {
   createServer,
   loadConfigFromFile,
   type InlineConfig,
+  type Plugin,
+  type PluginOption,
 } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import getPort from "get-port";
@@ -44,10 +46,13 @@ export async function startServer(input: StartServerInput): Promise<void> {
     configured: peeperCfg.globalCss,
   });
 
-  // Borrow aliases from BOTH vite.config (resolve.alias) AND svelte.config
-  // (kit.alias). SvelteKit users typically put custom aliases in
-  // svelte.config.js's `kit.alias` map, not in vite.config.
+  // Borrow aliases + CSS/asset-related plugins (Tailwind, PostCSS, etc.)
+  // from the user's vite.config. Filter out plugins that would conflict
+  // with our gallery shell (sveltekit, vite-plugin-svelte — we add our
+  // own controlled instance).
   let viteAliasObj: Record<string, string> | undefined;
+  let viteCssCfg: InlineConfig["css"];
+  let userPlugins: Plugin[] = [];
   try {
     const userViteResult = await loadConfigFromFile(
       { command: "serve", mode: "development" },
@@ -58,12 +63,14 @@ export async function startServer(input: StartServerInput): Promise<void> {
     viteAliasObj = Array.isArray(userAliasRaw)
       ? undefined
       : (userAliasRaw as Record<string, string> | undefined);
+    viteCssCfg = userViteResult?.config.css;
+    userPlugins = filterUserPlugins(userViteResult?.config.plugins ?? []);
   } catch (err) {
     console.warn(
       pc.yellow(
         `peeper-sv: could not load user vite config (${
           err instanceof Error ? err.message : String(err)
-        }). Continuing without vite aliases.`,
+        }). Continuing without user vite config.`,
       ),
     );
   }
@@ -83,6 +90,7 @@ export async function startServer(input: StartServerInput): Promise<void> {
       },
     },
     plugins: [
+      ...userPlugins,
       svelte(),
       peeperPlugin({
         root: input.root,
@@ -91,6 +99,7 @@ export async function startServer(input: StartServerInput): Promise<void> {
       }),
       virtualGlobalCss(globalCssPaths),
     ],
+    css: viteCssCfg,
     resolve: {
       alias: {
         // Default $lib first, then svelte.config kit.alias (incl. its own
@@ -118,6 +127,36 @@ export async function startServer(input: StartServerInput): Promise<void> {
 
 function rangeOf(start: number, count: number): number[] {
   return Array.from({ length: count }, (_, i) => start + i);
+}
+
+/**
+ * Walk a vite plugins array (which may contain nested arrays / promises /
+ * falsy entries) and drop plugins that would conflict with the gallery
+ * shell: anything from @sveltejs/vite-plugin-svelte (we add our own) or
+ * SvelteKit's runtime plugins (which expect a SvelteKit app, not a gallery).
+ */
+function filterUserPlugins(plugins: readonly PluginOption[]): Plugin[] {
+  const out: Plugin[] = [];
+  const SKIP_PREFIXES = [
+    "vite-plugin-svelte",         // @sveltejs/vite-plugin-svelte
+    "vite-plugin-sveltekit",      // SvelteKit core plugins
+    "sveltekit",                  // sveltekit() top-level marker
+  ];
+  const walk = (p: PluginOption): void => {
+    if (!p || typeof p === "boolean") return;
+    if (Array.isArray(p)) {
+      for (const child of p) walk(child);
+      return;
+    }
+    // Promises / async plugin options — we synchronously read, so skip.
+    if (typeof (p as { then?: unknown }).then === "function") return;
+    const plugin = p as Plugin;
+    const name = plugin.name ?? "";
+    if (SKIP_PREFIXES.some((prefix) => name.startsWith(prefix))) return;
+    out.push(plugin);
+  };
+  for (const p of plugins) walk(p);
+  return out;
 }
 
 async function firstExisting(paths: string[]): Promise<string> {
