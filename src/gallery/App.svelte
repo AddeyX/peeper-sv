@@ -2,11 +2,21 @@
   import manifest from "virtual:peeper-manifest";
   import type { ComponentEntry } from "../shared/types.js";
   import Sidebar from "./lib/Sidebar.svelte";
+  import Preview from "./lib/Preview.svelte";
+  import ControlPanel from "./lib/ControlPanel.svelte";
+  import { defaultPropValues, type PropValue } from "./lib/props-state.js";
 
   let selectedId = $state<string | null>(manifest.components[0]?.id ?? null);
   const selected = $derived(
     manifest.components.find((c: ComponentEntry) => c.id === selectedId) ?? null,
   );
+
+  let values = $state<Record<string, PropValue>>({});
+
+  $effect(() => {
+    if (selected) values = defaultPropValues(selected.props);
+    else values = {};
+  });
 
   function onSelect(id: string): void {
     selectedId = id;
@@ -20,15 +30,14 @@
   </header>
   <div class="body">
     <Sidebar entries={manifest.components} {selectedId} {onSelect} />
-    <main class="main">
-      {#if selected}
-        <h2>{selected.name}</h2>
-        <p class="muted">{selected.relPath}</p>
-        <pre>{JSON.stringify(selected.props, null, 2)}</pre>
-      {:else}
-        <p>No components found.</p>
-      {/if}
-    </main>
+    {#if selected}
+      <Preview entry={selected} props={values} />
+      <ControlPanel props={selected.props} bind:values />
+    {:else}
+      <main class="empty">
+        <p>No components found. Try adjusting <code>--scan</code> or <code>--ignore</code>.</p>
+      </main>
+    {/if}
   </div>
 </div>
 
@@ -41,6 +50,5 @@
   }
   .muted { color: var(--muted); font-size: 0.875rem; }
   .body { display: flex; flex: 1; overflow: hidden; }
-  .main { flex: 1; padding: 1rem; overflow: auto; }
-  pre { background: var(--panel); padding: 0.75rem; border-radius: 6px; overflow: auto; }
+  .empty { flex: 1; padding: 2rem; }
 </style>
