@@ -7,3 +7,6 @@ export type {
   ViewportPreset,
   PeeperConfig,
 } from "./shared/types.js";
+
+export { peeperPlugin } from "./plugin/index.js";
+export type { PeeperPluginOptions } from "./plugin/index.js";
