@@ -11,6 +11,7 @@ import pc from "picocolors";
 import { peeperPlugin } from "../plugin/index.js";
 import { loadPeeperConfig } from "./load-config.js";
 import { resolveGlobalCss } from "./global-css.js";
+import { loadSvelteKitAliases } from "./sveltekit-aliases.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,12 +44,10 @@ export async function startServer(input: StartServerInput): Promise<void> {
     configured: peeperCfg.globalCss,
   });
 
-  // Best-effort: borrow user's vite aliases (e.g. $lib remap), nothing else.
-  // Merging the user's full config caused dep-optimization to scan their entire
-  // dependency graph and choke on pre-compiled Svelte packages (bits-ui,
-  // convex-svelte, etc.). The gallery only needs aliases for user-component
-  // imports to resolve correctly.
-  let userAliasObj: Record<string, string> | undefined;
+  // Borrow aliases from BOTH vite.config (resolve.alias) AND svelte.config
+  // (kit.alias). SvelteKit users typically put custom aliases in
+  // svelte.config.js's `kit.alias` map, not in vite.config.
+  let viteAliasObj: Record<string, string> | undefined;
   try {
     const userViteResult = await loadConfigFromFile(
       { command: "serve", mode: "development" },
@@ -56,19 +55,19 @@ export async function startServer(input: StartServerInput): Promise<void> {
       input.root,
     );
     const userAliasRaw = userViteResult?.config.resolve?.alias;
-    userAliasObj = Array.isArray(userAliasRaw)
+    viteAliasObj = Array.isArray(userAliasRaw)
       ? undefined
       : (userAliasRaw as Record<string, string> | undefined);
   } catch (err) {
-    // User vite config is broken or missing — fine, fall back to defaults.
     console.warn(
       pc.yellow(
         `peeper-sv: could not load user vite config (${
           err instanceof Error ? err.message : String(err)
-        }). Continuing with default aliases.`,
+        }). Continuing without vite aliases.`,
       ),
     );
   }
+  const kitAliasObj = await loadSvelteKitAliases(input.root);
 
   const port = await getPort({ port: rangeOf(input.port, 20) });
 
@@ -94,8 +93,11 @@ export async function startServer(input: StartServerInput): Promise<void> {
     ],
     resolve: {
       alias: {
+        // Default $lib first, then svelte.config kit.alias (incl. its own
+        // $lib if set), then vite.config resolve.alias on top — latter wins.
         $lib: path.join(input.root, "src/lib"),
-        ...(userAliasObj ?? {}),
+        ...kitAliasObj,
+        ...(viteAliasObj ?? {}),
       },
     },
     // Prevent Vite from auto-scanning the user's dependency graph for
