@@ -26,9 +26,7 @@ export interface StartServerInput {
 }
 
 export async function startServer(input: StartServerInput): Promise<void> {
-  const galleryRoot = path.resolve(__dirname, "../../dist/gallery");
   const resolvedGalleryRoot = await firstExisting([
-    galleryRoot,
     path.resolve(__dirname, "../gallery"),
   ]);
 
